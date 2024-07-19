@@ -1,0 +1,52 @@
+version: "3.9"
+services:
+  sqs:
+    image: softwaremill/elasticmq-native:1.4.4
+    ports:
+      - "9324:9324"
+      - "3003:9325"
+    volumes:
+      - ./elasticmq.conf:/opt/elasticmq.conf
+
+  db:
+    image: postgres:14.3
+    environment:
+      POSTGRES_PASSWORD: p0stgr3s
+      POSTGRES_USER: bbb
+    volumes:
+      - ./seed.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - 5432:5432
+    healthcheck: 
+      test: ["CMD", "pg_isready", "-U", "bbb", "-d", "bbb"]
+      interval: 3s
+      timeout: 5s
+      retries: 30
+
+  db_ui:
+    image: sosedoff/pgweb:0.13.1
+    depends_on: 
+      db:
+        condition: service_healthy
+    ports: 
+      - "3001:8081" 
+    environment:
+      - PGWEB_DATABASE_URL=postgres://bbb:p0stgr3s@db:5432/bbb?sslmode=disable
+
+  load_main:
+    image: locustio/locust
+    ports:
+     - "3002:8089"
+    volumes:
+      - ./load.py:/mnt/locust/load.py
+    command: -f /mnt/locust/load.py -H http://api:3000 --users 10 --spawn-rate 1 --autostart
+
+  # api:
+  #   build: .
+  #   ports:
+  #     - 3000:3000
+  #   environment:
+  #     - DATABASE_URL=postgres://bbb:p0stgr3s@db:5432/bbb?sslmode=disable
+  #   depends_on:
+  #     - sqs
+  #     - db_ui
